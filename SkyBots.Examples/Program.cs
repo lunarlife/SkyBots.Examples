@@ -3,6 +3,7 @@ using SkyBots.Api.Bots;
 using SkyBots.Api.Components.Entities.Bots;
 using SkyBots.Api.Components.Entities.Bots.Internal.Navigate;
 using SkyBots.Api.Events.Bots.Navigate;
+using SkyBots.Api.Events.Entities;
 using SkyBots.Api.Mathematics;
 using SkyBots.Api.Server;
 
@@ -10,22 +11,24 @@ namespace SkyBots.Examples;
 
 public class Program : SkyProgram
 {
-    public override Token Token => "18c5fc0d72b";
-    public override string Password => "87367";
+    public override Token Token => "18c65790553";
+    public override string Password => "25926";
 
     public override async void Init(AuthResult result)
     {
         if (result != AuthResult.Successfully) return;
-        if (Island.FreeBots.Count == 0) Console.WriteLine("No available bots.");
+        if (Island.FreeBots.Count == 0) App.Debug.Info("No available bots.");
         var entity = Island.FreeBots[0];
         var bot = entity.GetComponent<BotComponent>();
+        App.Debug.Info($"Try to bind bot {entity.Id}");
         var botBindingResult = await bot.Bind(new BotBindArgs
         {
             DisplayName = "Example",
         });
-        App.Debug.Info("Binding: " + botBindingResult);
-        var plugin = entity.Transform;
-        plugin.OnMoved.AddListener(OnPositionChanged);
+        if (!entity.IsAlive) bot.Respawn();
+        App.Debug.Info("Binding: " + botBindingResult); 
+        var transform = entity.Transform;
+        transform.OnPositionChanged.AddListener(OnPositionChanged);
         var target = new Vector3<float>(5f, 101, 5f);
         App.Debug.Info($"Initial bot moving to {target};");
         var task = entity.GetComponent<Navigator>().Move(new MoveArgs
@@ -47,11 +50,16 @@ public class Program : SkyProgram
 
     private void MoveCompleteHandler(BotMoveCompletedEventArgs args)
     {
-        App.Debug.Info($"Bot {args.Bot.Name} has completed moving : " + args.Result);
+        var bot = args.Bot;
+        App.Debug.Info($"Bot {bot.Name} has completed moving : " + args.Result);
+        var target = (Vector3<int>)bot.Transform.Position;
+        var block = target + Vector3<int>.DOWN;
+        Console.WriteLine($"Bot position: {target}; target block: {block}");
+        bot.BreakBlock(block);
     }
 
-    private void OnPositionChanged(EntityPositionChangedEventArgs args)
+    private void OnPositionChanged(TransformChangedEventArgs args)
     {
-        App.Debug.Info($"bot {args.Component.Entity.Name} moved to " + args.New);
+        //App.Debug.Info($"Bot {args.Component.Entity.Name} moved to " + args.Component);
     }
 }
