@@ -1,14 +1,17 @@
 ﻿using SkyBots.Api;
 using SkyBots.Api.Bots;
 using SkyBots.Api.Components.Entities.Bots;
-using SkyBots.Api.Components.Entities.Bots.Internal.Navigate;
+using SkyBots.Api.Components.Entities.Bots.Navigate;
+using SkyBots.Api.Components.Entities.Bots.Respawn;
+using SkyBots.Api.Entities;
+using SkyBots.Api.Events.Bots;
 using SkyBots.Api.Events.Bots.Navigate;
 using SkyBots.Api.Events.Entities;
 using SkyBots.Api.Mathematics;
 using SkyBots.Api.Server;
 
 namespace SkyBots.Examples;
-
+ 
 public class Program : SkyProgram
 {
     public override Token Token => "18c65790553";
@@ -25,10 +28,16 @@ public class Program : SkyProgram
         {
             DisplayName = "Example",
         });
-        if (!entity.IsAlive) bot.Respawn();
-        App.Debug.Info("Binding: " + botBindingResult); 
-        var transform = entity.Transform;
-        transform.OnPositionChanged.AddListener(OnPositionChanged);
+        bot.OnPositionChanged.AddListener(OnPositionChanged);
+        bot.OnViewChanged.AddListener(OnViewChanged);
+        bot.OnIsOnGroundChanged.AddListener(IsOnGroundHandler);
+        bot.OnHurt.AddListener(HurtHandler);
+        entity.OnDead.AddListener(DeadHandler);
+        bot.OnRespawn.AddListener(RespawnHandler);
+        if (entity.AliveStatus != AliveStatus.Alive) await bot.Respawn().WaitAsync();
+
+        App.Debug.Info("Binding: " + botBindingResult);
+
         var target = new Vector3<float>(5f, 101, 5f);
         App.Debug.Info($"Initial bot moving to {target};");
         var task = entity.GetComponent<Navigator>().Move(new MoveArgs
@@ -36,7 +45,7 @@ public class Program : SkyProgram
             Sprint = false,
             Target = target
         });
-        task.OnComplete.AddListener(MoveCompleteHandler);
+        task.OnCompleted.AddListener(MoveCompleteHandler);
         var world = App.World;
         if (!world.IsLoaded)
         {
@@ -48,18 +57,25 @@ public class Program : SkyProgram
         App.Debug.Info(world.GetBlockAt(0, 100, 0).Type);
     }
 
-    private void MoveCompleteHandler(BotMoveCompletedEventArgs args)
+    private void RespawnHandler(BotRespawnEventArgs args)=> App.Debug.Info($"Bot {args.Bot.Name} RESPAWNED");
+
+    private void DeadHandler(EntityDeadEventArgs args)
     {
-        var bot = args.Bot;
-        App.Debug.Info($"Bot {bot.Name} has completed moving : " + args.Result);
-        var target = (Vector3<int>)bot.Transform.Position;
-        var block = target + Vector3<int>.DOWN;
-        Console.WriteLine($"Bot position: {target}; target block: {block}");
-        bot.BreakBlock(block);
+        App.Debug.Info($"Bot {args.Entity.Name} DEAD");
+        args.Entity.GetComponent<BotComponent>().Respawn();
     }
 
-    private void OnPositionChanged(TransformChangedEventArgs args)
-    {
-        //App.Debug.Info($"Bot {args.Component.Entity.Name} moved to " + args.Component);
-    }
+    private void HurtHandler(BotHurtEventArgs args) => App.Debug.Info($"Bot {args.Bot.Name} hurt: {args.NewHealth}");
+
+    private void IsOnGroundHandler(EntityIsOnGroundChangedEventArgs args) =>
+        App.Debug.Info($"Entity is on ground changed: {args.Entity.Name}");
+
+    private void MoveCompleteHandler(TaskBotMoveCompletedEventArgs args) =>
+        App.Debug.Info($"Bot {args.Bot.Name} has completed moving: {args.Result}");
+
+    private void OnPositionChanged(EntityPositionChangedEventArgs args) =>
+        App.Debug.Info($"Entity {args.Entity.Name} position changed: {args.New}");
+
+    private void OnViewChanged(EntityViewChangedEventArgs args) =>
+        App.Debug.Info($"Entity {args.Entity.Name} view changed: {args.New}");
 }
