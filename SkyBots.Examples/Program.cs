@@ -4,8 +4,9 @@ using SkyBots.Api.Components.Entities.Bots;
 using SkyBots.Api.Components.Entities.Bots.Navigate;
 using SkyBots.Api.Entities;
 using SkyBots.Api.Events.Bots;
-using SkyBots.Api.Events.Bots.Navigate;
 using SkyBots.Api.Events.Entities;
+using SkyBots.Api.Events.Inventories;
+using SkyBots.Api.Events.Inventories.SlotChange;
 using SkyBots.Api.Events.World;
 using SkyBots.Api.Jobs.Instructions;
 using SkyBots.Api.Mathematics;
@@ -13,27 +14,30 @@ using SkyBots.Api.Server;
 using static SkyBots.Api.App;
 
 namespace SkyBots.Examples;
- 
+
 public class Program : SkyProgram
 {
-    public override Token Token => "18c79c3840e";
-    public override string Password => "53848";
+    public override Token Token => "18c7ed08286";
+    public override string Password => "66965";
 
     public override async void Init(AuthResult result)
     {
         if (result != AuthResult.Successfully) return;
         if (Island.FreeBots.Count == 0) Debug.Info("No available bots.");
         var entity = Island.FreeBots[0];
-        var bot = entity.GetComponent<BotComponent>();
+        var bot = entity.GetComponent<Bot>();
         Debug.Info($"Try to bind bot {entity.Id}");
         var botBindingResult = await bot.Bind(new BotBindArgs
         {
             DisplayName = "Example",
         });
         ExecuteJob(TestJob());
-        bot.OnPositionChanged.AddListener(OnPositionChanged);
-        bot.OnViewChanged.AddListener(OnViewChanged);
-        bot.OnIsOnGroundChanged.AddListener(IsOnGroundHandler);
+        bot.OnInventoryOpen.AddListener(InventoryOpenHandler);
+        bot.OnInventoryClose.AddListener(InventoryCloseHandler);
+        bot.Inventory.OnSlotChange.AddListener(InventorySlotChangeHandler);
+        bot.Transform.OnPositionChanged.AddListener(OnPositionChanged);
+        bot.Transform.OnViewChanged.AddListener(OnViewChanged);
+        bot.Transform.OnIsOnGroundChanged.AddListener(IsOnGroundHandler);
         bot.OnHurt.AddListener(HurtHandler);
         entity.OnDead.AddListener(DeadHandler);
         bot.OnRespawn.AddListener(RespawnHandler);
@@ -44,7 +48,7 @@ public class Program : SkyProgram
 
         var target = new Vector3<float>(5f, 101, 5f);
         Debug.Info($"Initial bot moving to {target};");
-        var task = entity.GetComponent<Navigator>().Move(new MoveArgs
+        var task = entity.GetComponent<Navigator>().Navigate(new MoveArgs
         {
             Sprint = false,
             Target = target
@@ -61,6 +65,14 @@ public class Program : SkyProgram
         Debug.Info(world.GetBlockAt(0, 100, 0).Type);
     }
 
+    private void InventorySlotChangeHandler(BotInventorySlotChangeEventArgs args)
+    {
+        Debug.Info($"Bot {args.Bot.Name} slot {args.Slot}changed from {args.Old} to {args.New}");
+    }
+
+    private void InventoryOpenHandler(InventoryOpenEventArgs args) => Debug.Info($"Bot {args.Bot.Name} opened inventory {args.Inventory.Type}.");
+    private void InventoryCloseHandler(InventoryCloseEventArgs args) => Debug.Info($"Bot {args.Bot.Name} closed inventory {args.Inventory.Type}.");
+
     private IEnumerable<IInstruction> TestJob()
     {
         var job = new WaitMs(500);
@@ -72,14 +84,15 @@ public class Program : SkyProgram
     }
 
 
-    private void WorldBlockChangeHandler(WorldBlockChangeEventArgs args) => Debug.Info($"Block changed in {args.Old.Position} from {args.Old.Type} to {args.New.Type}.");
+    private void WorldBlockChangeHandler(WorldBlockChangeEventArgs args) =>
+        Debug.Info($"Block changed in {args.Old.Position} from {args.Old.Type} to {args.New.Type}.");
 
-    private void RespawnHandler(BotRespawnEventArgs args)=> Debug.Info($"Bot {args.Bot.Name} RESPAWNED");
+    private void RespawnHandler(BotRespawnEventArgs args) => Debug.Info($"Bot {args.Bot.Name} RESPAWNED");
 
     private void DeadHandler(EntityDeadEventArgs args)
     {
         Debug.Info($"Bot {args.Entity.Name} DEAD");
-        args.Entity.GetComponent<BotComponent>().Respawn();
+        args.Entity.GetComponent<Bot>().Respawn();
     }
 
     private void HurtHandler(BotHurtEventArgs args) => Debug.Info($"Bot {args.Bot.Name} hurt: {args.NewHealth}");
@@ -87,8 +100,13 @@ public class Program : SkyProgram
     private void IsOnGroundHandler(EntityIsOnGroundChangedEventArgs args) =>
         Debug.Info($"Entity is on ground changed: {args.Entity.Name}");
 
-    private void MoveCompleteHandler(TaskBotMoveCompletedEventArgs args) =>
-        Debug.Info($"Bot {args.Bot.Name} has completed moving: {args.Result}");
+    private void MoveCompleteHandler(BotNavigateCompletedEventArgs args)
+    {
+        var bot = args.Bot;
+        Debug.Info($"Bot {bot.Name} has completed moving: {args.Result}");
+        Debug.Info($"Interact {bot.Transform.Position}");
+        bot.InteractBlock(bot.Transform.Position );
+    }
 
     private void OnPositionChanged(EntityPositionChangedEventArgs args) =>
         Debug.Info($"Entity {args.Entity.Name} position changed: {args.New}");
